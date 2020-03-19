@@ -342,6 +342,9 @@ void forward_yolo_layer(const layer l, network_state state)
     memset(l.delta, 0, l.outputs * l.batch * sizeof(float));
     if (!state.train) return;
     //float avg_iou = 0;
+
+    float center_loss = 0;
+
     float tot_iou = 0;
     float tot_giou = 0;
     float tot_diou = 0;
@@ -518,6 +521,9 @@ void forward_yolo_layer(const layer l, network_state state)
                         int class_index = entry_index(l, b, mask_n*l.w*l.h + j*l.w + i, 4 + 1);
                         delta_yolo_class(l.output, l.delta, class_index, class_id, l.classes, l.w*l.h, &avg_cat, l.focal_loss, l.label_smooth_eps, l.classes_multipliers);
 
+                        // center loss
+                        center_loss += pow(truth_shift.x - pred.x, 2) + pow(truth_shift.y - pred.y, 2);
+
                         ++count;
                         ++class_count;
                         if (all_ious.iou > .5) recall += 1;
@@ -589,10 +595,11 @@ void forward_yolo_layer(const layer l, network_state state)
     loss /= l.batch;
     classification_loss /= l.batch;
     iou_loss /= l.batch;
+    center_loss /= l.batch;
 
-    fprintf(stderr, "v3 (%s loss, Normalizer: (iou: %.2f, cls: %.2f) Region %d Avg (IOU: %f, GIOU: %f), Class: %f, Obj: %f, No Obj: %f, .5R: %f, .75R: %f, count: %d, class_loss = %f, iou_loss = %f, total_loss = %f \n",
+    fprintf(stderr, "v3 (%s loss, Normalizer: (iou: %.2f, cls: %.2f) Region %d Avg (IOU: %f, GIOU: %f), Class: %f, Obj: %f, No Obj: %f, .5R: %f, .75R: %f, count: %d, class_loss = %f, iou_loss = %f, center_loss = %f, total_loss = %f \n",
         (l.iou_loss == MSE ? "mse" : (l.iou_loss == GIOU ? "giou" : "iou")), l.iou_normalizer, l.cls_normalizer, state.index, tot_iou / count, tot_giou / count, avg_cat / class_count, avg_obj / count, avg_anyobj / (l.w*l.h*l.n*l.batch), recall / count, recall75 / count, count,
-        classification_loss, iou_loss, loss);
+        classification_loss, iou_loss, (center_loss == 0 ? NAN : center_loss), loss);
 }
 
 void backward_yolo_layer(const layer l, network_state state)
