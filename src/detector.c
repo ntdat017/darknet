@@ -168,6 +168,8 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
 
     pthread_t load_thread = load_data(args);
     int count = 0;
+    int ITER_PRINT = 100;
+
     //while(i*imgs < N*120){
     while (get_current_iteration(net) < net.max_batches) {
         if (l.random && count++ % 10 == 0) {
@@ -252,9 +254,9 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
         */
 
         const double load_time = (what_time_is_it_now() - time);
-        printf("Loaded: %lf seconds", load_time);
+        // printf("Loaded: %lf seconds", load_time);
         if (load_time > 0.1 && avg_loss > 0) printf(" - performance bottleneck on CPU or Disk HDD/SSD");
-        printf("\n");
+        // printf("\n");
 
         time = what_time_is_it_now();
         float loss = 0;
@@ -275,13 +277,15 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
         const int iteration = get_current_iteration(net);
         //i = get_current_batch(net);
 
-        int calc_map_for_each = 4 * train_images_num / (net.batch * net.subdivisions);  // calculate mAP for each 4 Epochs
+        // int calc_map_for_each = 4 * train_images_num / (net.batch * net.subdivisions);  // calculate mAP for each 4 Epochs
+        int calc_map_for_each = 100; // cal mAP for each batch 
         calc_map_for_each = fmax(calc_map_for_each, 100);
         int next_map_calc = iter_map + calc_map_for_each;
         next_map_calc = fmax(next_map_calc, net.burn_in);
         //next_map_calc = fmax(next_map_calc, 400);
-        if (calc_map) {
+        if (iteration % ITER_PRINT == 0) {
             printf("\n (next mAP calculation at %d iterations) ", next_map_calc);
+            printf("\n %d: %f, %f avg loss, %f rate, %lf seconds, %d images\n", iteration, loss, avg_loss, get_current_rate(net), (what_time_is_it_now() - time), iteration*imgs);
             if (mean_average_precision > 0) printf("\n Last accuracy mAP@0.5 = %2.2f %%, best = %2.2f %% ", mean_average_precision * 100, best_map * 100);
         }
 
@@ -289,10 +293,9 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
             if (iteration < net.burn_in * 3) fprintf(stderr, "\n Tensor Cores are disabled until the first %d iterations are reached.", 3 * net.burn_in);
             else fprintf(stderr, "\n Tensor Cores are used.");
         }
-        printf("\n %d: %f, %f avg loss, %f rate, %lf seconds, %d images\n", iteration, loss, avg_loss, get_current_rate(net), (what_time_is_it_now() - time), iteration*imgs);
 
         int draw_precision = 0;
-        if (calc_map && (iteration >= next_map_calc || iteration == net.max_batches)) {
+        if (iteration % ITER_PRINT == 0) {
             if (l.random) {
                 printf("Resizing to initial size: %d x %d ", init_w, init_h);
                 args.w = init_w;
