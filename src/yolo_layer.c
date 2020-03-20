@@ -236,6 +236,42 @@ ious delta_yolo_box(box truth, float *x, float *biases, int n, int index, int i,
     return all_ious;
 }
 
+float cal_center_loss(box truth, float *x, float *biases, int n, int index, int i, int j, int lw, int lh, int w, int h, float *delta, float scale, int stride, float iou_normalizer, IOU_LOSS iou_loss, int accumulate, float max_delta)
+{
+    ious all_ious = { 0 };
+    // i - step in layer width
+    // j - step in layer height
+    //  Returns a box in absolute coordinates
+    box pred = get_yolo_box(x, biases, n, index, i, j, lw, lh, w, h, stride);
+    // avoid nan in dx_box_iou
+    if (pred.w == 0) { pred.w = 1.0; }
+    if (pred.h == 0) { pred.h = 1.0; }
+    float gt_tx = (truth.x*lw - i);
+    float gt_ty = (truth.y*lh - j);
+    float gt_tw = log(truth.w*w / biases[2 * n]);
+    float gt_th = log(truth.h*h / biases[2 * n + 1]);
+
+    float pred_tx = (pred.x*lw - i);
+    float pred_ty = (pred.y*lh - j);
+    float pred_tw = log(pred.w*w / biases[2 * n]);
+    float pred_th = log(pred.h*h / biases[2 * n + 1]);
+    
+    // center_loss = pow(gt_tx - pred_tx, 2) + pow(gt_ty - pred_ty, 2);
+
+    float d_x = pow(pred_tx - gt_tx, 2);
+    float d_y = pow(pred_ty - gt_ty, 2);
+    delta[index + 0 * stride] += d_x;
+    delta[index + 1 * stride] += d_y;
+
+    float center_loss = d_x + d_y;
+
+    // fprintf(stderr, "[DEBUG] config:  iou_normalizer=%f, scale=%f, stride=%d\n ", iou_normalizer, scale, stride);
+
+    // fprintf(stderr, "[DEBUG] gt_tx=%f, pred_tx=%f, gt_ty=%f, pred_ty=%f, center_loss=%f, d_x=%f, d_y=%f\n", gt_tx, pred_tx, gt_ty, pred_ty, center_loss, d_x, d_y);
+
+    return center_loss;
+}
+
 void averages_yolo_deltas(int class_index, int box_index, int stride, int classes, float *delta)
 {
 
@@ -343,7 +379,7 @@ void forward_yolo_layer(const layer l, network_state state)
     if (!state.train) return;
     //float avg_iou = 0;
 
-    float center_loss = 0;
+    float center_losses = 0;
 
     float tot_iou = 0;
     float tot_giou = 0;
@@ -450,12 +486,17 @@ void forward_yolo_layer(const layer l, network_state state)
 
             int mask_n = int_index(l.mask, best_n, l.n);
             if (mask_n >= 0) {
+                // fprintf(stderr, "[DEBUG] Mask_n is %d\n\n", mask_n);
                 int class_id = state.truth[t*(4 + 1) + b*l.truths + 4];
                 if (l.map) class_id = l.map[class_id];
 
                 int box_index = entry_index(l, b, mask_n*l.w*l.h + j*l.w + i, 0);
                 const float class_multiplier = (l.classes_multipliers) ? l.classes_multipliers[class_id] : 1.0f;
                 ious all_ious = delta_yolo_box(truth, l.output, l.biases, best_n, box_index, i, j, l.w, l.h, state.net.w, state.net.h, l.delta, (2 - truth.w*truth.h), l.w*l.h, l.iou_normalizer * class_multiplier, l.iou_loss, 1, l.max_delta);
+
+                float center_loss = cal_center_loss(truth, l.output, l.biases, best_n, box_index, i, j, l.w, l.h, state.net.w, state.net.h, l.delta, (2 - truth.w*truth.h), l.w*l.h, l.iou_normalizer * class_multiplier, l.iou_loss, 1, l.max_delta);
+
+                center_losses += center_loss;
 
                 // range is 0 <= 1
                 tot_iou += all_ious.iou;
@@ -520,9 +561,6 @@ void forward_yolo_layer(const layer l, network_state state)
 
                         int class_index = entry_index(l, b, mask_n*l.w*l.h + j*l.w + i, 4 + 1);
                         delta_yolo_class(l.output, l.delta, class_index, class_id, l.classes, l.w*l.h, &avg_cat, l.focal_loss, l.label_smooth_eps, l.classes_multipliers);
-
-                        // center loss
-                        center_loss += pow(truth_shift.x - pred.x, 2) + pow(truth_shift.y - pred.y, 2);
 
                         ++count;
                         ++class_count;
@@ -595,11 +633,16 @@ void forward_yolo_layer(const layer l, network_state state)
     loss /= l.batch;
     classification_loss /= l.batch;
     iou_loss /= l.batch;
-    center_loss /= l.batch;
+    center_losses /= count;
+    loss += center_losses;
 
-    fprintf(stderr, "v3 (%s loss, Normalizer: (iou: %.2f, cls: %.2f) Region %d Avg (IOU: %f, GIOU: %f), Class: %f, Obj: %f, No Obj: %f, .5R: %f, .75R: %f, count: %d, class_loss = %f, iou_loss = %f, center_loss = %f, total_loss = %f \n",
-        (l.iou_loss == MSE ? "mse" : (l.iou_loss == GIOU ? "giou" : "iou")), l.iou_normalizer, l.cls_normalizer, state.index, tot_iou / count, tot_giou / count, avg_cat / class_count, avg_obj / count, avg_anyobj / (l.w*l.h*l.n*l.batch), recall / count, recall75 / count, count,
-        classification_loss, iou_loss, (center_loss == 0 ? NAN : center_loss), loss);
+    if (iou_loss > 0){
+
+        fprintf(stderr, "[INFO] v3 (%s loss, Normalizer: (iou: %.2f, cls: %.2f) Region %d Avg (IOU: %f, GIOU: %f), Class: %f, Obj: %f, No Obj: %f, .5R: %f, .75R: %f, count: %d, class_loss = %f, iou_loss = %f, center_loss = %f, total_loss = %f \n",
+            (l.iou_loss == MSE ? "mse" : (l.iou_loss == GIOU ? "giou" : "iou")), l.iou_normalizer, l.cls_normalizer, state.index, tot_iou / count, tot_giou / count, avg_cat / class_count, avg_obj / count, avg_anyobj / (l.w*l.h*l.n*l.batch), recall / count, recall75 / count, count,
+            classification_loss, iou_loss, (center_losses == 0 ? NAN : center_losses), loss);
+
+    }
 }
 
 void backward_yolo_layer(const layer l, network_state state)
