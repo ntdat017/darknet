@@ -1142,11 +1142,11 @@ data load_data_detection(int n, char **paths, int m, int w, int h, int c, int bo
                     else blur = use_blur;
                 }
             }
-            int pleft, pright, ptop, pbot = 0;
-            // int pleft = rand_precalc_random(-dw, dw, r1);
-            // int pright = rand_precalc_random(-dw, dw, r2);
-            // int ptop = rand_precalc_random(-dh, dh, r3);
-            // int pbot = rand_precalc_random(-dh, dh, r4);
+            // int pleft, pright, ptop, pbot = 0;
+            int pleft = rand_precalc_random(-dw, dw, r1);
+            int pright = rand_precalc_random(-dw, dw, r2);
+            int ptop = rand_precalc_random(-dh, dh, r3);
+            int pbot = rand_precalc_random(-dh, dh, r4);
             //printf("\n pleft = %d, pright = %d, ptop = %d, pbot = %d, ow = %d, oh = %d \n", pleft, pright, ptop, pbot, ow, oh);
 
             //float scale = rand_precalc_random(.25, 2, r_scale); // unused currently
@@ -1202,70 +1202,70 @@ data load_data_detection(int n, char **paths, int m, int w, int h, int c, int bo
                 d.X.vals[i] = ai.data;
                 memcpy(d.y.vals[i], truth, 5 * boxes * sizeof(float));
             }
-            // else if (use_mixup == 1) {
-            //     if (i_mixup == 0) {
-            //         d.X.vals[i] = ai.data;
-            //         memcpy(d.y.vals[i], truth, 5 * boxes * sizeof(float));
-            //     }
-            //     else if (i_mixup == 1) {
-            //         image old_img = make_empty_image(w, h, c);
-            //         old_img.data = d.X.vals[i];
-            //         //show_image(ai, "new");
-            //         //show_image(old_img, "old");
-            //         //wait_until_press_key_cv();
-            //         blend_images_cv(ai, 0.5, old_img, 0.5);
-            //         blend_truth(d.y.vals[i], boxes, truth);
-            //         free_image(old_img);
-            //         d.X.vals[i] = ai.data;
-            //     }
-            // }
-            // else if (use_mixup == 3) {
-            //     if (i_mixup == 0) {
-            //         image tmp_img = make_image(w, h, c);
-            //         d.X.vals[i] = tmp_img.data;
-            //     }
+            else if (use_mixup == 1) {
+                if (i_mixup == 0) {
+                    d.X.vals[i] = ai.data;
+                    memcpy(d.y.vals[i], truth, 5 * boxes * sizeof(float));
+                }
+                else if (i_mixup == 1) {
+                    image old_img = make_empty_image(w, h, c);
+                    old_img.data = d.X.vals[i];
+                    //show_image(ai, "new");
+                    //show_image(old_img, "old");
+                    //wait_until_press_key_cv();
+                    blend_images_cv(ai, 0.5, old_img, 0.5);
+                    blend_truth(d.y.vals[i], boxes, truth);
+                    free_image(old_img);
+                    d.X.vals[i] = ai.data;
+                }
+            }
+            else if (use_mixup == 3) {
+                if (i_mixup == 0) {
+                    image tmp_img = make_image(w, h, c);
+                    d.X.vals[i] = tmp_img.data;
+                }
 
-            //     if (flip) {
-            //         int tmp = pleft;
-            //         pleft = pright;
-            //         pright = tmp;
-            //     }
+                if (flip) {
+                    int tmp = pleft;
+                    pleft = pright;
+                    pright = tmp;
+                }
 
-            //     const int left_shift = min_val_cmp(cut_x[i], max_val_cmp(0, (-pleft*w / ow)));
-            //     const int top_shift = min_val_cmp(cut_y[i], max_val_cmp(0, (-ptop*h / oh)));
+                const int left_shift = min_val_cmp(cut_x[i], max_val_cmp(0, (-pleft*w / ow)));
+                const int top_shift = min_val_cmp(cut_y[i], max_val_cmp(0, (-ptop*h / oh)));
 
-            //     const int right_shift = min_val_cmp((w - cut_x[i]), max_val_cmp(0, (-pright*w / ow)));
-            //     const int bot_shift = min_val_cmp(h - cut_y[i], max_val_cmp(0, (-pbot*h / oh)));
+                const int right_shift = min_val_cmp((w - cut_x[i]), max_val_cmp(0, (-pright*w / ow)));
+                const int bot_shift = min_val_cmp(h - cut_y[i], max_val_cmp(0, (-pbot*h / oh)));
 
 
-            //     int k, x, y;
-            //     for (k = 0; k < c; ++k) {
-            //         for (y = 0; y < h; ++y) {
-            //             int j = y*w + k*w*h;
-            //             if (i_mixup == 0 && y < cut_y[i]) {
-            //                 int j_src = (w - cut_x[i] - right_shift) + (y + h - cut_y[i] - bot_shift)*w + k*w*h;
-            //                 memcpy(&d.X.vals[i][j + 0], &ai.data[j_src], cut_x[i] * sizeof(float));
-            //             }
-            //             if (i_mixup == 1 && y < cut_y[i]) {
-            //                 int j_src = left_shift + (y + h - cut_y[i] - bot_shift)*w + k*w*h;
-            //                 memcpy(&d.X.vals[i][j + cut_x[i]], &ai.data[j_src], (w-cut_x[i]) * sizeof(float));
-            //             }
-            //             if (i_mixup == 2 && y >= cut_y[i]) {
-            //                 int j_src = (w - cut_x[i] - right_shift) + (top_shift + y - cut_y[i])*w + k*w*h;
-            //                 memcpy(&d.X.vals[i][j + 0], &ai.data[j_src], cut_x[i] * sizeof(float));
-            //             }
-            //             if (i_mixup == 3 && y >= cut_y[i]) {
-            //                 int j_src = left_shift + (top_shift + y - cut_y[i])*w + k*w*h;
-            //                 memcpy(&d.X.vals[i][j + cut_x[i]], &ai.data[j_src], (w - cut_x[i]) * sizeof(float));
-            //             }
-            //         }
-            //     }
+                int k, x, y;
+                for (k = 0; k < c; ++k) {
+                    for (y = 0; y < h; ++y) {
+                        int j = y*w + k*w*h;
+                        if (i_mixup == 0 && y < cut_y[i]) {
+                            int j_src = (w - cut_x[i] - right_shift) + (y + h - cut_y[i] - bot_shift)*w + k*w*h;
+                            memcpy(&d.X.vals[i][j + 0], &ai.data[j_src], cut_x[i] * sizeof(float));
+                        }
+                        if (i_mixup == 1 && y < cut_y[i]) {
+                            int j_src = left_shift + (y + h - cut_y[i] - bot_shift)*w + k*w*h;
+                            memcpy(&d.X.vals[i][j + cut_x[i]], &ai.data[j_src], (w-cut_x[i]) * sizeof(float));
+                        }
+                        if (i_mixup == 2 && y >= cut_y[i]) {
+                            int j_src = (w - cut_x[i] - right_shift) + (top_shift + y - cut_y[i])*w + k*w*h;
+                            memcpy(&d.X.vals[i][j + 0], &ai.data[j_src], cut_x[i] * sizeof(float));
+                        }
+                        if (i_mixup == 3 && y >= cut_y[i]) {
+                            int j_src = left_shift + (top_shift + y - cut_y[i])*w + k*w*h;
+                            memcpy(&d.X.vals[i][j + cut_x[i]], &ai.data[j_src], (w - cut_x[i]) * sizeof(float));
+                        }
+                    }
+                }
 
-            //     blend_truth_mosaic(d.y.vals[i], boxes, truth, w, h, cut_x[i], cut_y[i], i_mixup, left_shift, right_shift, top_shift, bot_shift);
+                blend_truth_mosaic(d.y.vals[i], boxes, truth, w, h, cut_x[i], cut_y[i], i_mixup, left_shift, right_shift, top_shift, bot_shift);
 
-            //     free_image(ai);
-            //     ai.data = d.X.vals[i];
-            // }
+                free_image(ai);
+                ai.data = d.X.vals[i];
+            }
 
 
             if (show_imgs && i_mixup == use_mixup)   // delete i_mixup
