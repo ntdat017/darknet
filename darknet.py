@@ -121,7 +121,7 @@ if os.name == "nt":
             lib = CDLL(winGPUdll, RTLD_GLOBAL)
             print("Environment variables indicated a CPU run, but we didn't find `"+winNoGPUdll+"`. Trying a GPU run anyway.")
 else:
-    lib = CDLL("./libdarknet.so", RTLD_GLOBAL)
+    lib = CDLL("./modules/dl_modules/detectors/darknet/libdarknet.so", RTLD_GLOBAL)
 lib.network_width.argtypes = [c_void_p]
 lib.network_width.restype = c_int
 lib.network_height.argtypes = [c_void_p]
@@ -393,9 +393,11 @@ def performDetect(imagePath="data/dog.jpg", thresh= 0.25, configPath = "./cfg/yo
     detections = detect(netMain, metaMain, imagePath.encode("ascii"), thresh)
     if showImage:
         try:
-            from skimage import io, draw
+            from skimage import io, draw, color
             import numpy as np
             image = io.imread(imagePath)
+            image = color.gray2rgb(image)
+            print(image.shape)
             print("*** "+str(len(detections))+" Results, color coded by confidence ***")
             imcaption = []
             for detection in detections:
