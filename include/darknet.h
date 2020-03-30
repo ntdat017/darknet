@@ -693,6 +693,7 @@ typedef struct network {
     int flip; // horizontal flip 50% probability augmentaiont for classifier training (default = 1)
     int blur;
     int mixup;
+    int rotate;
     float label_smooth_eps;
     int resize_step;
     int letter_box;
@@ -870,6 +871,7 @@ typedef struct load_args {
     int dontuse_opencv;
     float jitter;
     int flip;
+    int rotate;
     int blur;
     int mixup;
     float label_smooth_eps;

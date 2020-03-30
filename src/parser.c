@@ -1077,6 +1077,7 @@ void parse_net_options(list *options, network *net)
     net->flip = option_find_int_quiet(options, "flip", 1);
     net->blur = option_find_int_quiet(options, "blur", 0);
     net->mixup = option_find_int_quiet(options, "mixup", 0);
+    net->rotate = option_find_int_quiet(options, "rotate", 0);
     int cutmix = option_find_int_quiet(options, "cutmix", 0);
     int mosaic = option_find_int_quiet(options, "mosaic", 0);
     if (mosaic && cutmix) net->mixup = 4;
