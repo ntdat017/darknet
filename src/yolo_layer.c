@@ -652,7 +652,7 @@ void forward_yolo_layer(const layer l, network_state state)
     classification_loss /= l.batch;
     iou_loss /= l.batch;
     center_losses /= count;
-    loss += center_losses;
+    // loss += center_losses;
 
     if (iou_loss > 0){
 
