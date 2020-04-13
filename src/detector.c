@@ -119,6 +119,8 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     float mean_average_precision = -1;
     float best_map = mean_average_precision;
 
+    // printf("[DEBUG] Parsing rotate is %d", net.rotate);
+
     load_args args = { 0 };
     args.w = net.w;
     args.h = net.h;
@@ -138,6 +140,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
 
     args.angle = net.angle;
     args.gaussian_noise = net.gaussian_noise;
+    args.rotate = net.rotate;
     args.blur = net.blur;
     args.mixup = net.mixup;
     args.exposure = net.exposure;

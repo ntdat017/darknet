@@ -47,6 +47,10 @@ void train_yolo(char *cfgfile, char *weightfile)
     args.num_boxes = side;
     args.d = &buffer;
     args.type = REGION_DATA;
+    args.rotate = net.rotate;
+
+    // printf("[DEBUG] GO IN TRAIN YOLO\n");
+    // printf("[DEBUG] net.rotate is %d\n", net.rotate);
 
     args.angle = net.angle;
     args.exposure = net.exposure;

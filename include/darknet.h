@@ -700,6 +700,7 @@ typedef struct network {
     int gaussian_noise;
     int blur;
     int mixup;
+    int rotate;
     float label_smooth_eps;
     int resize_step;
     int attention;
@@ -881,6 +882,7 @@ typedef struct load_args {
     float jitter;
     int flip;
     int gaussian_noise;
+    int rotate;
     int blur;
     int mixup;
     float label_smooth_eps;

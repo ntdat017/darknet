@@ -1150,8 +1150,21 @@ extern "C" void draw_train_loss(char *windows_name, mat_cv* img_src, int img_siz
 // Data augmentation
 // ====================================================================
 
+cv::Mat rotate_img(cv::Mat src, double angle)
+{
+    cv::Mat dst;
+
+    cv::Point2f pc(src.cols/2., src.rows/2.);
+    // getRotationMatrix2D with positive anlge values means counter clockwise rotation.
+    cv::Mat r = cv::getRotationMatrix2D(pc, -angle, 1.0);
+
+    cv::warpAffine(src, dst, r, src.size()); // what size I should use?
+    // imwrite("rotated.jpg", rotated_img);
+    return dst;
+}
+
 extern "C" image image_data_augmentation(mat_cv* mat, int w, int h,
-    int pleft, int ptop, int swidth, int sheight, int flip,
+    int pleft, int ptop, int swidth, int sheight, int flip, int angle,
     float dhue, float dsat, float dexp,
     int gaussian_noise, int blur, int num_boxes, float *truth)
 {
@@ -1182,10 +1195,25 @@ extern "C" image image_data_augmentation(mat_cv* mat, int w, int h,
         }
 
         // flip
-        if (flip) {
+        if (flip == 0){
+        }
+        else if (flip == 1){
             cv::Mat cropped;
             cv::flip(sized, cropped, 1);    // 0 - x-axis, 1 - y-axis, -1 - both axes (x & y)
             sized = cropped.clone();
+        }
+        else if (flip == 2){
+            cv::Mat cropped;
+            cv::flip(sized, cropped, 0);    // 0 - x-axis, 1 - y-axis, -1 - both axes (x & y)
+            sized = cropped.clone();
+        }
+        else if (flip == 3){
+            cv::Mat cropped;
+            cv::flip(sized, cropped, -1);    // 0 - x-axis, 1 - y-axis, -1 - both axes (x & y)
+            sized = cropped.clone();
+        }
+        if (angle) {
+            sized = rotate_img(sized, angle);
         }
 
         // HSV augmentation

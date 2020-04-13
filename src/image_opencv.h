@@ -98,7 +98,7 @@ void draw_train_loss(char *windows_name, mat_cv* img, int img_size, float avg_lo
 
 // Data augmentation
 image image_data_augmentation(mat_cv* mat, int w, int h,
-    int pleft, int ptop, int swidth, int sheight, int flip,
+    int pleft, int ptop, int swidth, int sheight, int flip, int angle,
     float dhue, float dsat, float dexp,
     int gaussian_noise, int blur, int num_boxes, float *truth);
 
