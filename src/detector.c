@@ -303,7 +303,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
         printf("\n %d: %f, %f avg loss, %f rate, %lf seconds, %d images, %f hours left\n", iteration, loss, avg_loss, get_current_rate(net), (what_time_is_it_now() - time), iteration*imgs, avg_time);
 
         int draw_precision = 0;
-        if (iteration % ITER_PRINT == 0) {
+        if (iteration % ITER_PRINT == 0 && iteration >= 500) {
             if (l.random) {
                 printf("Resizing to initial size: %d x %d ", init_w, init_h);
                 args.w = init_w;

@@ -3,13 +3,12 @@
 #include "image.h"
 #include "dark_cuda.h"
 #include "box.h"
+#include "http_stream.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-
-#include <algorithm>
 
 extern int check_mistakes;
 
@@ -295,6 +294,32 @@ void correct_boxes(box_label *boxes, int n, float dx, float dy, float sx, float 
     }
 }
 
+struct min_max {
+  int min, max;
+};
+
+struct min_max get_min_max(float a[], float n) {
+  int c, min_index, max_index;
+  float min, max;
+
+  max = a[0];
+  min = a[0];
+  struct min_max indices = {0, 0};
+
+  for (c = 1; c < n; c++) {
+    if (a[c] > max) {
+       indices.max = c;
+       max = a[c];
+    }
+    if (a[c] < min) {
+       indices.min = c;
+       min = a[c];
+    }
+  }
+ 
+  return indices;
+}
+
 // Overloading
 void correct_boxes_with_rotate(box_label *boxes, int n, float dx, float dy, float sx, float sy, int flip, int angle)
 {
@@ -354,10 +379,16 @@ void correct_boxes_with_rotate(box_label *boxes, int n, float dx, float dy, floa
             // printf("[DEBUG] tl' = (%.2f, %.2f), tr' = (%.2f, %.2f), br' = (%.2f, %.2f), bl' = (%.2f, %.2f)\n", xx1, yy1, xx2, yy2, xx3, yy3, xx4, yy4);
             float tl[] = {xx1, xx2, xx3, xx4};
             float br[] = {yy1, yy2, yy3, yy4};
-            boxes[i].top = *std::min_element(br, br + 4);
-            boxes[i].bottom = *std::max_element(br, br + 4);
-            boxes[i].right = *std::max_element(tl, tl + 4);
-            boxes[i].left = *std::min_element(tl, tl + 4);
+
+            struct min_max br_min_max;
+            br_min_max = get_min_max(br, 4);
+            struct min_max tl_min_max;
+            tl_min_max = get_min_max(tl, 4);
+
+            boxes[i].top = br_min_max.min;
+            boxes[i].bottom = br_min_max.max;
+            boxes[i].right = tl_min_max.max;
+            boxes[i].left = tl_min_max.min;
             // printf("[DEBUG] top' = %.2f, left' = %.2f, bottom' = %.2f, right' = %.2f\n", boxes[i].top, boxes[i].left, boxes[i].bottom, boxes[i].right);
         }
 
@@ -1193,7 +1224,7 @@ data load_data_detection(int n, char **paths, int m, int w, int h, int c, int bo
 
             image ai = image_data_augmentation(src, w, h, pleft, ptop, swidth, sheight, flip, angle, dhue, dsat, dexp,
                 gaussian_noise, blur, boxes, truth);
-            
+
             // printf("\nGT may be:\n");
             // for (int i = 0; i < 5 * boxes; ++i){
             //     printf("%f\t", truth[i]);
@@ -1537,6 +1568,40 @@ pthread_t load_data_in_thread(load_args args)
     return thread;
 }
 
+static const int thread_wait_ms = 5;
+static volatile int flag_exit;
+static volatile int * run_load_data = NULL;
+static load_args * args_swap = NULL;
+static pthread_t* threads = NULL;
+
+pthread_mutex_t mtx_load_data = PTHREAD_MUTEX_INITIALIZER;
+
+void *run_thread_loop(void *ptr)
+{
+    const int i = *(int *)ptr;
+
+    while (!custom_atomic_load_int(&flag_exit)) {
+        while (!custom_atomic_load_int(&run_load_data[i])) {
+            if (custom_atomic_load_int(&flag_exit)) {
+                free(ptr);
+                return 0;
+            }
+            this_thread_sleep_for(thread_wait_ms);
+        }
+
+        pthread_mutex_lock(&mtx_load_data);
+        load_args *args_local = (load_args *)xcalloc(1, sizeof(load_args));
+        *args_local = args_swap[i];
+        pthread_mutex_unlock(&mtx_load_data);
+
+        load_thread(args_local);
+
+        custom_atomic_store_int(&run_load_data[i], 0);
+    }
+    free(ptr);
+    return 0;
+}
+
 void *load_threads(void *ptr)
 {
     //srand(time(0));
@@ -1547,6 +1612,34 @@ void *load_threads(void *ptr)
     int total = args.n;
     free(ptr);
     data* buffers = (data*)xcalloc(args.threads, sizeof(data));
+    if (!threads) {
+        threads = (pthread_t*)xcalloc(args.threads, sizeof(pthread_t));
+        run_load_data = (volatile int *)xcalloc(args.threads, sizeof(int));
+        args_swap = (load_args *)xcalloc(args.threads, sizeof(load_args));
+        fprintf(stderr, " Create %d permanent cpu-threads \n", args.threads);
+
+        for (i = 0; i < args.threads; ++i) {
+            int* ptr = (int*)xcalloc(1, sizeof(int));
+            *ptr = i;
+            if (pthread_create(&threads[i], 0, run_thread_loop, ptr)) error("Thread creation failed");
+        }
+    }
+
+    for (i = 0; i < args.threads; ++i) {
+        args.d = buffers + i;
+        args.n = (i + 1) * total / args.threads - i * total / args.threads;
+
+        pthread_mutex_lock(&mtx_load_data);
+        args_swap[i] = args;
+        pthread_mutex_unlock(&mtx_load_data);
+
+        custom_atomic_store_int(&run_load_data[i], 1);  // run thread
+    }
+    for (i = 0; i < args.threads; ++i) {
+        while (custom_atomic_load_int(&run_load_data[i])) this_thread_sleep_for(thread_wait_ms); //   join
+    }
+
+    /*
     pthread_t* threads = (pthread_t*)xcalloc(args.threads, sizeof(pthread_t));
     for(i = 0; i < args.threads; ++i){
         args.d = buffers + i;
@@ -1556,6 +1649,8 @@ void *load_threads(void *ptr)
     for(i = 0; i < args.threads; ++i){
         pthread_join(threads[i], 0);
     }
+    */
+
     *out = concat_datas(buffers, args.threads);
     out->shallow = 0;
     for(i = 0; i < args.threads; ++i){
@@ -1563,8 +1658,26 @@ void *load_threads(void *ptr)
         free_data(buffers[i]);
     }
     free(buffers);
-    free(threads);
+    //free(threads);
     return 0;
+}
+
+void free_load_threads(void *ptr)
+{
+    load_args args = *(load_args *)ptr;
+    if (args.threads == 0) args.threads = 1;
+    int i;
+    if (threads) {
+        custom_atomic_store_int(&flag_exit, 1);
+        for (i = 0; i < args.threads; ++i) {
+            pthread_join(threads[i], 0);
+        }
+        free((void*)run_load_data);
+        free(args_swap);
+        free(threads);
+        threads = NULL;
+        custom_atomic_store_int(&flag_exit, 0);
+    }
 }
 
 pthread_t load_data(load_args args)
